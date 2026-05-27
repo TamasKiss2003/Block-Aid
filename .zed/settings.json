@@ -1,0 +1,16 @@
+{
+  "prettier": {
+    "allowed": true
+  },
+  "languages": {
+    "GDScript": {
+      "formatter": {
+        "external": {
+          "command": "gdscript-formatter",
+          "arguments": []
+        }
+      }
+    }
+  },
+  "show_edit_predictions": false
+}

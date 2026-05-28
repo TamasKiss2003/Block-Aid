@@ -1,7 +1,8 @@
-[gd_scene format=3 uid="uid://dvll30q0xtvnc"]
+[gd_scene format=4 uid="uid://dvll30q0xtvnc"]
 
 [ext_resource type="PackedScene" uid="uid://cuay2tq5qvr8n" path="res://scenes/player.tscn" id="1_s6dok"]
 [ext_resource type="Texture2D" uid="uid://5l0x07yqmxml" path="res://assets/block.png" id="2_1kc1q"]
+[ext_resource type="Script" uid="uid://ceypuunh2ognh" path="res://scripts/camera.gd" id="4_lbhrr"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_4msxo"]
 texture = ExtResource("2_1kc1q")
@@ -19,11 +20,14 @@ sources/0 = SubResource("TileSetAtlasSource_4msxo")
 [node name="Player" parent="." unique_id=1356026791 instance=ExtResource("1_s6dok")]
 position = Vector2(-16, -16)
 
-[node name="Camera2D" type="Camera2D" parent="." unique_id=506408532]
-position = Vector2(0, -67)
-zoom = Vector2(2, 2)
-
-[node name="TileMap" type="TileMap" parent="." unique_id=1645169535]
+[node name="Walls" type="TileMapLayer" parent="." unique_id=1365014839]
+use_parent_material = true
+tile_map_data = PackedByteArray("AAAFAP3/AAAAAAAAAAD///z/AAAAAAAAAAABAPz/AAAAAAAAAAADAPz/AAAAAAAAAAAEAPz/AAAAAAAAAAD7/wEAAAAAAAAAAAD8/wEAAAAAAAAAAAD9/wEAAAAAAAAAAAD+/wEAAAAAAAAAAAD//wEAAAAAAAAAAAAAAAEAAAAAAAAAAAABAAEAAAAAAAAAAAACAAEAAAAAAAAAAAADAAEAAAAAAAAAAAAEAAEAAAAAAAAAAAAFAAEAAAAAAAAAAAAGAAEAAAAAAAAAAAAHAP3/AAAAAAAAAAAIAAEAAAAAAAAAAAACAP//AAAAAAAAAAAAAP//AAAAAAAAAAD+////AAAAAAAAAAD8//3/AAAAAAAAAAD7//3/AAAAAAAAAAD5/wEAAAAAAAAAAAD3////AAAAAAAAAAD2//7/AAAAAAAAAAD4//z/AAAAAAAAAAD6//z/AAAAAAAAAAA=")
 tile_set = SubResource("TileSet_5fb3c")
-format = 2
-layer_0/tile_data = PackedInt32Array(65531, 0, 0, 65532, 0, 0, 65533, 0, 0, 65534, 0, 0, 65535, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0, 5, 0, 0, 6, 0, 0, -131067, 0, 0, -196603, 0, 0, -5, 0, 0, -131075, 0, 0, -196609, 0, 0, -262143, 0, 0, -262141, 0, 0, -262140, 0, 0)
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=506408532]
+position = Vector2(64, -96)
+ignore_rotation = false
+zoom = Vector2(2, 2)
+script = ExtResource("4_lbhrr")
+target = NodePath("../Player")

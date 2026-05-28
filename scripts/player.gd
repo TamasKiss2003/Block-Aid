@@ -21,13 +21,6 @@ var _start_rot = 0.0
 var _roll_angle = 0.0
 
 
-func _can_apply_physics() -> bool:
-	if is_rolling:
-		return false
-
-	return true
-
-
 func _can_roll(direction: int) -> bool:
 	if is_rolling or not is_on_floor() or test_move(global_transform, Vector2(direction * BLOCK_SIZE, 0.0)):
 		return false
@@ -43,9 +36,6 @@ func _can_dash() -> bool:
 
 
 func _physics_process(delta: float) -> void:
-	if !_can_apply_physics():
-		return
-
 	if is_dashing:
 		move_and_slide()
 		var past_target := (velocity.x > 0.0 and global_position.x >= _dash_target_x) \

@@ -21,6 +21,9 @@ animations = [{
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hqtel"]
 size = Vector2(32, 32)
 
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_g2els"]
+size = Vector2(32, 32)
+
 [node name="Player" type="CharacterBody2D" unique_id=1356026791]
 script = ExtResource("1_g2els")
 
@@ -32,3 +35,13 @@ autoplay = "idle"
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=181238772]
 scale = Vector2(0.995, 0.995)
 shape = SubResource("RectangleShape2D_hqtel")
+
+[node name="HitBox" type="Area2D" parent="." unique_id=494498149]
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="HitBox" unique_id=982816272]
+scale = Vector2(0.995, 0.995)
+shape = SubResource("RectangleShape2D_g2els")
+debug_color = Color(1, 0, 0, 0.41960785)
+
+[connection signal="body_entered" from="HitBox" to="." method="_on_hit_box_body_entered"]

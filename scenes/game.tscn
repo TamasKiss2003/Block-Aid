@@ -1,11 +1,12 @@
 [gd_scene format=4 uid="uid://dvll30q0xtvnc"]
 
 [ext_resource type="PackedScene" uid="uid://cuay2tq5qvr8n" path="res://scenes/player.tscn" id="1_s6dok"]
-[ext_resource type="Texture2D" uid="uid://5l0x07yqmxml" path="res://assets/block.png" id="2_1kc1q"]
+[ext_resource type="Texture2D" uid="uid://2xo4a75qrlkq" path="res://assets/world-tiles.png" id="2_lnu2h"]
+[ext_resource type="Script" uid="uid://oyk447ddrs5n" path="res://scripts/spikes.gd" id="4_iywne"]
 [ext_resource type="Script" uid="uid://ceypuunh2ognh" path="res://scripts/camera.gd" id="4_lbhrr"]
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_4msxo"]
-texture = ExtResource("2_1kc1q")
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_lbhrr"]
+texture = ExtResource("2_lnu2h")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -13,16 +14,28 @@ texture_region_size = Vector2i(32, 32)
 [sub_resource type="TileSet" id="TileSet_5fb3c"]
 tile_size = Vector2i(32, 32)
 physics_layer_0/collision_layer = 1
-sources/0 = SubResource("TileSetAtlasSource_4msxo")
+sources/1 = SubResource("TileSetAtlasSource_lbhrr")
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_lnu2h"]
+texture = ExtResource("2_lnu2h")
+texture_region_size = Vector2i(32, 32)
+7:0/0 = 0
+7:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-12, 4, 12, 4, 12, 16, -12, 16)
+
+[sub_resource type="TileSet" id="TileSet_lbhrr"]
+tile_size = Vector2i(32, 32)
+physics_layer_0/collision_layer = 2
+physics_layer_0/collision_mask = 0
+sources/0 = SubResource("TileSetAtlasSource_lnu2h")
 
 [node name="Game" type="Node2D" unique_id=2101316175]
 
 [node name="Player" parent="." unique_id=1356026791 instance=ExtResource("1_s6dok")]
-position = Vector2(-16, -16)
+position = Vector2(-208, 16)
 
 [node name="Walls" type="TileMapLayer" parent="." unique_id=1365014839]
 use_parent_material = true
-tile_map_data = PackedByteArray("AAAFAP3/AAAAAAAAAAD///z/AAAAAAAAAAABAPz/AAAAAAAAAAADAPz/AAAAAAAAAAAEAPz/AAAAAAAAAAD7/wEAAAAAAAAAAAD8/wEAAAAAAAAAAAD9/wEAAAAAAAAAAAD+/wEAAAAAAAAAAAD//wEAAAAAAAAAAAAAAAEAAAAAAAAAAAABAAEAAAAAAAAAAAACAAEAAAAAAAAAAAADAAEAAAAAAAAAAAAEAAEAAAAAAAAAAAAFAAEAAAAAAAAAAAAGAAEAAAAAAAAAAAAHAP3/AAAAAAAAAAAIAAEAAAAAAAAAAAACAP//AAAAAAAAAAAAAP//AAAAAAAAAAD+////AAAAAAAAAAD8//3/AAAAAAAAAAD7//3/AAAAAAAAAAD5/wEAAAAAAAAAAAD3////AAAAAAAAAAD2//7/AAAAAAAAAAD4//z/AAAAAAAAAAD6//z/AAAAAAAAAAA=")
+tile_map_data = PackedByteArray("AAD7/wEAAQAAAAAAAAD8/wEAAQAAAAAAAAD9/wEAAQAAAAAAAAD+/wEAAQAAAAAAAAD//wEAAQAAAAAAAAAAAAEAAQAAAAAAAAABAAEAAQAAAAAAAAACAAEAAQAAAAAAAAADAAEAAQAAAAAAAAAEAAEAAQAAAAAAAAAFAAEAAQAAAAAAAAAGAAEAAQAAAAAAAAAIAAEAAQAAAAAAAAD5/wEAAQAAAAAAAAD3////AQAAAAAAAAD2//7/AQAAAAAAAAD/////AQAAAAAAAAABAP//AQAAAAAAAAD4/wAAAQAAAAAAAAD4//v/AQAAAAAAAAD6//v/AQAAAAAAAAD7//z/AQAAAAAAAAD8//z/AQAAAAAAAAD+//v/AQAAAAAAAAAAAPv/AQAAAAAAAAACAPv/AQAAAAAAAAAEAPv/AQAAAAAAAAAFAPz/AQAAAAAAAAAHAPz/AQAAAAAAAAA=")
 tile_set = SubResource("TileSet_5fb3c")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=506408532]
@@ -31,3 +44,8 @@ ignore_rotation = false
 zoom = Vector2(2, 2)
 script = ExtResource("4_lbhrr")
 target = NodePath("../Player")
+
+[node name="Spikes" type="TileMapLayer" parent="." unique_id=1732376965 groups=["enemy"]]
+tile_map_data = PackedByteArray("AAD+/wAAAAAHAAAAAAD//wAAAAAHAAAAAAAAAAAAAAAHAAAAAAABAAAAAAAHAAAAAAACAAAAAAAHAAAAAAAFAAAAAAAHAAAAAADy/woAAAAHAAAAAADz/woAAAAHAAAAAAD0/woAAAAHAAAAAAD1/woAAAAHAAAAAAD2/woAAAAHAAAAAAD3/woAAAAHAAAAAAD4/woAAAAHAAAAAAD5/woAAAAHAAAAAAD6/woAAAAHAAAAAAD7/woAAAAHAAAAAAD8/woAAAAHAAAAAAD9/woAAAAHAAAAAAD+/woAAAAHAAAAAAD//woAAAAHAAAAAAAAAAoAAAAHAAAAAAABAAoAAAAHAAAAAAACAAoAAAAHAAAAAAADAAoAAAAHAAAAAAAEAAoAAAAHAAAAAAAFAAoAAAAHAAAAAAAGAAoAAAAHAAAAAAAHAAoAAAAHAAAAAAAIAAoAAAAHAAAAAAAJAAoAAAAHAAAAAAAKAAoAAAAHAAAAAAALAAoAAAAHAAAAAAAMAAoAAAAHAAAAAAANAAoAAAAHAAAAAAAOAAoAAAAHAAAAAAAPAAoAAAAHAAAAAAAQAAoAAAAHAAAAAAD7//v/AAAHAAAAAAA=")
+tile_set = SubResource("TileSet_lbhrr")
+script = ExtResource("4_iywne")

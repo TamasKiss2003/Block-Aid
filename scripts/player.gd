@@ -1,7 +1,7 @@
 extends CharacterBody2D
 
 const BLOCK_SIZE: int = 32
-const JUMP_VELOCITY: float = -400.0
+const JUMP_VELOCITY: float = -450.0
 # Rolling
 const ROLL_DURATION: float = 0.2
 const ROLL_AXIS_TRESHOLD: float = 0.2
@@ -98,3 +98,12 @@ func dash(direction: int) -> void:
 	_dash_count += 1
 	_dash_target_x = global_position.x + direction * BLOCK_SIZE * DASH_DISTANCE
 	velocity = Vector2(direction * DASH_SPEED, 0.0)
+
+
+func die() -> void:
+	get_tree().reload_current_scene()
+
+
+func _on_hit_box_body_entered(body: Node2D) -> void:
+	if body.is_in_group("enemy") and body.has_method("on_player_contact"):
+		body.on_player_contact(self)

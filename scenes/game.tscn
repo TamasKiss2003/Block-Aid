@@ -31,7 +31,7 @@ sources/0 = SubResource("TileSetAtlasSource_lnu2h")
 [node name="Game" type="Node2D" unique_id=2101316175]
 
 [node name="Player" parent="." unique_id=1356026791 instance=ExtResource("1_s6dok")]
-position = Vector2(-208, 16)
+position = Vector2(-112, 16)
 
 [node name="Walls" type="TileMapLayer" parent="." unique_id=1365014839]
 use_parent_material = true

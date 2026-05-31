@@ -6,19 +6,23 @@ const JUMP_VELOCITY := -450.0
 # Rolling
 const ROLL_DURATION := 0.2
 const ROLL_AXIS_TRESHOLD := 0.2
-const ROLL_SNAP_THRESHOLD := BLOCK_SIZE / 4.0
+const ROLL_SNAP_THRESHOLD := BLOCK_SIZE / 8.0
 const ROLL_DURATION_EXPONENT := 0.8
 const ROLL_END_DELAY := 0.05
 
 # Dashing
 const DASH_SPEED := 500.0
-const DASH_DISTANCE := 2
+const DASH_DISTANCE := 3
 const MAX_DASH_COUNT := 1
+const WALL_SLIDE_SPEED := 40.0
 
 var _is_rolling := false
 var _is_dashing := false
 var _dash_target_x := 0.0
 var _dash_count := 0
+var _is_wall_stuck := false
+var _wall_stick_dir := 0
+var _wall_stick_aligning := false
 
 
 func die() -> void:
@@ -27,7 +31,10 @@ func die() -> void:
 
 func _physics_process(delta: float) -> void:
 	if _is_dashing:
-		_perform_dash()
+		_handle_dash()
+		return
+	if _is_wall_stuck:
+		_handle_wall_stick()
 		return
 
 	_handle_gravity(delta)
@@ -35,8 +42,10 @@ func _physics_process(delta: float) -> void:
 	_handle_movement()
 	move_and_slide()
 
+# Dash handling
 
-func _perform_dash() -> void:
+
+func _handle_dash() -> void:
 	move_and_slide()
 	var past_target := (velocity.x > 0.0 and global_position.x >= _dash_target_x) \
 	or (velocity.x < 0.0 and global_position.x <= _dash_target_x)
@@ -45,8 +54,95 @@ func _perform_dash() -> void:
 		velocity = Vector2.ZERO
 		_is_dashing = false
 	elif is_on_wall():
+		var target_x_delta := _dash_target_x - global_position.x
+		var dash_dir := 0 if abs(target_x_delta) < 1 else int(sign(target_x_delta))
+		var floor_near := test_move(global_transform, Vector2(0.0, BLOCK_SIZE + ROLL_SNAP_THRESHOLD))
 		velocity = Vector2.ZERO
 		_is_dashing = false
+		if not floor_near and dash_dir != 0:
+			_is_wall_stuck = true
+			_wall_stick_dir = dash_dir
+			_dash_count = 0
+			_align_to_wall_grid()
+
+
+func _align_to_wall_grid() -> void:
+	var target_y: float = ceil((global_position.y - BLOCK_SIZE / 2.0) / BLOCK_SIZE) * BLOCK_SIZE + BLOCK_SIZE / 2.0
+	if is_equal_approx(global_position.y, target_y):
+		return
+	_wall_stick_aligning = true
+	var tween := create_tween()
+	tween.tween_property(self, "global_position:y", target_y, abs(target_y - global_position.y) / WALL_SLIDE_SPEED)
+	tween.tween_callback(
+		func() -> void:
+			_wall_stick_aligning = false
+			if not test_move(global_transform, Vector2(_wall_stick_dir * 1.0, 0.0)):
+				_is_wall_stuck = false
+	)
+
+# Wall climb handling
+
+
+func _handle_wall_stick() -> void:
+	velocity = Vector2.ZERO
+
+	if _wall_stick_aligning:
+		return
+
+	if test_move(global_transform, Vector2.DOWN):
+		_is_wall_stuck = false
+		return
+
+	if _is_rolling:
+		return
+
+	var vert_dir := int(Input.is_action_just_pressed("ui_down")) - int(Input.is_action_just_pressed("ui_up"))
+	if vert_dir != 0:
+		var target := _get_vertical_roll_target(vert_dir)
+		var roll_success := _roll_wall(vert_dir, target)
+		if not roll_success:
+			target.x += _wall_stick_dir * BLOCK_SIZE
+			_roll_climb(_wall_stick_dir, target)
+		return
+
+	var horiz := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
+	if horiz == _wall_stick_dir:
+		_is_wall_stuck = false
+	elif horiz == -_wall_stick_dir:
+		_is_wall_stuck = false
+		_start_dash(horiz)
+
+
+func _get_vertical_roll_target(direction: int) -> Vector2:
+	var top_edge = global_position.y - BLOCK_SIZE / 2.0
+	var next_top = (floor(top_edge * direction / BLOCK_SIZE) + 1) * BLOCK_SIZE * direction
+	if direction * (next_top - top_edge) < ROLL_SNAP_THRESHOLD:
+		next_top += direction * BLOCK_SIZE
+	return Vector2(global_position.x, next_top + BLOCK_SIZE / 2.0)
+
+
+func _roll_wall(vert_dir: int, target: Vector2) -> bool:
+	if not _can_wall_roll(target):
+		return false
+
+	_is_rolling = true
+	var start_pivot = global_position + Vector2(_wall_stick_dir * BLOCK_SIZE / 2.0, vert_dir * BLOCK_SIZE / 2.0)
+	var end_pivot = Vector2(target.x + _wall_stick_dir * BLOCK_SIZE / 2.0, target.y - vert_dir * BLOCK_SIZE / 2.0)
+	var roll_angle := _wall_stick_dir * vert_dir * (-PI / 2.0)
+
+	_perform_roll(start_pivot, end_pivot, roll_angle)
+	return true
+
+
+func _can_wall_roll(target: Vector2) -> bool:
+	if _is_rolling or _wall_stick_aligning:
+		return false
+	var delta := target - global_position
+	if test_move(global_transform.translated(delta), Vector2.ZERO):
+		return false
+	if not test_move(global_transform.translated(delta), Vector2(_wall_stick_dir * 1.0, 0.0)):
+		return false
+	return true
 
 
 func _handle_gravity(delta: float) -> void:
@@ -57,8 +153,10 @@ func _handle_gravity(delta: float) -> void:
 
 
 func _handle_jump() -> void:
-	if Input.is_action_just_pressed("ui_accept") and is_on_floor() and !_is_rolling:
+	if Input.is_action_just_pressed("ui_up") and is_on_floor() and !_is_rolling:
 		velocity.y = JUMP_VELOCITY
+
+# Basic movement handling
 
 
 func _handle_movement() -> void:
@@ -66,11 +164,12 @@ func _handle_movement() -> void:
 		var dir := int(Input.is_action_pressed("ui_right")) - int(Input.is_action_pressed("ui_left"))
 		if dir == 0:
 			return
-		var target := _get_roll_target(dir)
+		var target := _get_horizontal_roll_target(dir)
 		var roll_success := _roll_sideways(dir, target)
 		if not roll_success:
 			target.y -= BLOCK_SIZE
 			_roll_climb(dir, target)
+
 	else:
 		var dir := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
 		if dir == 0:
@@ -78,7 +177,7 @@ func _handle_movement() -> void:
 		_start_dash(dir)
 
 
-func _get_roll_target(direction: int) -> Vector2:
+func _get_horizontal_roll_target(direction: int) -> Vector2:
 	var left_edge = global_position.x - BLOCK_SIZE / 2.0
 	var next_left = (floor(left_edge * direction / BLOCK_SIZE) + 1) * BLOCK_SIZE * direction
 	if direction * (next_left - left_edge) < ROLL_SNAP_THRESHOLD:
@@ -88,7 +187,7 @@ func _get_roll_target(direction: int) -> Vector2:
 
 # No exceptions or try catch in gdscript so returning a boolean show the roll worked
 func _roll_sideways(direction: int, target: Vector2) -> bool:
-	if !_can_roll(target):
+	if !_can_roll_sideways(target):
 		return false
 
 	_is_rolling = true
@@ -100,9 +199,17 @@ func _roll_sideways(direction: int, target: Vector2) -> bool:
 	return true
 
 
-func _roll_climb(direction: int, target: Vector2) -> void:
-	if !_can_roll(target):
-		return
+func _can_roll_sideways(target: Vector2) -> bool:
+	var delta_to_target := target - global_position
+	if _is_rolling or not is_on_floor() or test_move(global_transform.translated(delta_to_target), Vector2.ZERO):
+		return false
+
+	return true
+
+
+func _roll_climb(direction: int, target: Vector2) -> bool:
+	if !_can_roll_climb(target, direction):
+		return false
 
 	_is_rolling = true
 	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, -BLOCK_SIZE / 2.0)
@@ -110,11 +217,14 @@ func _roll_climb(direction: int, target: Vector2) -> void:
 	var roll_angle = direction * PI
 
 	_perform_roll(start_pivot, end_pivot, roll_angle)
+	return true
 
 
-func _can_roll(target: Vector2) -> bool:
+func _can_roll_climb(target: Vector2, direction: int) -> bool:
 	var delta_to_target := target - global_position
-	if _is_rolling or not is_on_floor() or test_move(global_transform.translated(delta_to_target), Vector2.ZERO):
+	if _is_rolling or \
+	test_move(global_transform.translated(delta_to_target), Vector2.ZERO) or \
+	!test_move(global_transform.translated(direction * Vector2.RIGHT * BLOCK_SIZE), Vector2.ZERO):
 		return false
 
 	return true
@@ -138,10 +248,13 @@ func _perform_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) 
 	tween.tween_callback(
 		func() -> void:
 			global_position.x = snapped(global_position.x - BLOCK_SIZE / 2.0, float(BLOCK_SIZE)) + BLOCK_SIZE / 2.0
+			global_position.y = snapped(global_position.y - BLOCK_SIZE / 2.0, float(BLOCK_SIZE)) + BLOCK_SIZE / 2.0
 			rotation = snapped(rotation, PI / 2.0)
 	)
 	tween.tween_interval(ROLL_END_DELAY)
 	tween.tween_callback(func() -> void: _is_rolling = false)
+
+# Dash target setting
 
 
 func _start_dash(direction: int) -> void:
@@ -167,6 +280,8 @@ func _get_dash_target_x(direction: int) -> float:
 	var offset = direction * (edge - base)
 	var blocks = DASH_DISTANCE if offset < BLOCK_SIZE / 2.0 else DASH_DISTANCE + 1
 	return base + direction * (blocks * BLOCK_SIZE + BLOCK_SIZE / 2.0)
+
+# Event handlers
 
 
 func _on_hit_box_body_entered(body: Node2D) -> void:

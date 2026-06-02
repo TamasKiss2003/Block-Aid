@@ -86,11 +86,18 @@ func _align_to_wall_grid() -> void:
 func _handle_wall_stick() -> void:
 	velocity = Vector2.ZERO
 
-	if _wall_stick_aligning:
-		return
-
 	if test_move(global_transform, Vector2.DOWN):
 		_is_wall_stuck = false
+		return
+
+	var horiz := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
+	if horiz == _wall_stick_dir:
+		_is_wall_stuck = false
+	elif horiz == -_wall_stick_dir:
+		_is_wall_stuck = false
+		_start_dash(horiz)
+
+	if _wall_stick_aligning:
 		return
 
 	if _is_rolling:
@@ -104,13 +111,6 @@ func _handle_wall_stick() -> void:
 			target.x += _wall_stick_dir * BLOCK_SIZE
 			_roll_climb(_wall_stick_dir, target)
 		return
-
-	var horiz := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
-	if horiz == _wall_stick_dir:
-		_is_wall_stuck = false
-	elif horiz == -_wall_stick_dir:
-		_is_wall_stuck = false
-		_start_dash(horiz)
 
 
 func _get_vertical_roll_target(direction: int) -> Vector2:

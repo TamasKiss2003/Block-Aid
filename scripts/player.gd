@@ -156,12 +156,19 @@ func _roll_wall(vert_dir: int, target: Vector2) -> bool:
 	if not _can_wall_roll(target):
 		return false
 
-	_is_rolling = true
 	var start_pivot = global_position + Vector2(_wall_stick_dir * BLOCK_SIZE / 2.0, vert_dir * BLOCK_SIZE / 2.0)
 	var end_pivot = Vector2(target.x + _wall_stick_dir * BLOCK_SIZE / 2.0, target.y - vert_dir * BLOCK_SIZE / 2.0)
 	var roll_angle := _wall_stick_dir * vert_dir * (-PI / 2.0)
 
-	_perform_roll(start_pivot, end_pivot, roll_angle)
+	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
+		return false
+
+	_is_rolling = true
+	var tween := _perform_roll(start_pivot, end_pivot, roll_angle)
+	tween.tween_callback(func() -> void:
+		if not test_move(global_transform, Vector2(_wall_stick_dir, 0.0)):
+			_release_wall_stick()
+	)
 	return true
 
 
@@ -169,9 +176,23 @@ func _can_wall_roll(target: Vector2) -> bool:
 	var delta := target - global_position
 	if _is_rolling or _wall_stick_aligning or !has_wallclimb or \
 	test_move(global_transform.translated(delta), Vector2.ZERO) or \
-	not test_move(global_transform.translated(delta), Vector2(_wall_stick_dir * 1.0, 0.0)):
+	(not test_move(global_transform.translated(delta), Vector2(_wall_stick_dir * 1.0, 0.0)) and delta.y < 0):
 		return false
 
+	return true
+
+
+func _is_roll_arc_clear(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) -> bool:
+	var start_pos := global_position
+	var start_rot := rotation
+	var steps := int(round(abs(roll_angle) / (PI / 2.0))) * 2
+	for i in range(1, steps + 1):
+		var t := float(i) / float(steps + 1)
+		var pivot := start_pivot.lerp(end_pivot, t)
+		var angle := roll_angle * t
+		var check_pos := pivot + (start_pos - start_pivot).rotated(angle)
+		if test_move(Transform2D(start_rot + angle, check_pos), Vector2.ZERO):
+			return false
 	return true
 
 
@@ -229,11 +250,14 @@ func _roll_sideways(direction: int, target: Vector2) -> bool:
 	if !_can_roll_sideways(target):
 		return false
 
-	_is_rolling = true
 	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, BLOCK_SIZE / 2.0)
 	var end_pivot = Vector2(target.x - direction * BLOCK_SIZE / 2.0, target.y + BLOCK_SIZE / 2.0)
 	var roll_angle = direction * PI / 2.0
 
+	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
+		return false
+
+	_is_rolling = true
 	_perform_roll(start_pivot, end_pivot, roll_angle)
 	return true
 
@@ -250,11 +274,14 @@ func _roll_climb(direction: int, target: Vector2) -> bool:
 	if !_can_roll_climb(target, direction):
 		return false
 
-	_is_rolling = true
 	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, -BLOCK_SIZE / 2.0)
 	var end_pivot = Vector2(target.x - direction * BLOCK_SIZE / 2.0, target.y + BLOCK_SIZE / 2.0)
 	var roll_angle = direction * PI
 
+	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
+		return false
+
+	_is_rolling = true
 	_perform_roll(start_pivot, end_pivot, roll_angle)
 	return true
 
@@ -269,7 +296,7 @@ func _can_roll_climb(target: Vector2, direction: int) -> bool:
 	return true
 
 
-func _perform_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) -> void:
+func _perform_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) -> Tween:
 	var start_pos = global_position
 	var start_rot = rotation
 
@@ -292,6 +319,8 @@ func _perform_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) 
 	)
 	tween.tween_interval(ROLL_END_DELAY)
 	tween.tween_callback(func() -> void: _is_rolling = false)
+
+	return tween
 
 # Dash target setting
 

@@ -16,6 +16,12 @@ const DASH_DISTANCE := 3
 const MAX_DASH_COUNT := 1
 const WALL_SLIDE_SPEED := 40.0
 
+# Default abilities
+@export var has_jump := false
+@export var has_dash := false
+# Acquired abilities
+@export var has_wallclimb := false
+
 var _is_rolling := false
 var _is_dashing := false
 var _dash_target_x := 0.0
@@ -23,6 +29,7 @@ var _dash_count := 0
 var _is_wall_stuck := false
 var _wall_stick_dir := 0
 var _wall_stick_aligning := false
+var _wall_tween: Tween = null
 
 
 func die() -> void:
@@ -38,7 +45,6 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_handle_gravity(delta)
-	_handle_jump()
 	_handle_movement()
 	move_and_slide()
 
@@ -68,17 +74,42 @@ func _handle_dash() -> void:
 
 func _align_to_wall_grid() -> void:
 	var target_y: float = ceil((global_position.y - BLOCK_SIZE / 2.0) / BLOCK_SIZE) * BLOCK_SIZE + BLOCK_SIZE / 2.0
+	_tween_wall_y(target_y)
+
+
+func _slide_down_wall() -> void:
+	_tween_wall_y(global_position.y + BLOCK_SIZE)
+
+
+func _tween_wall_y(target_y: float) -> void:
 	if is_equal_approx(global_position.y, target_y):
+		_on_wall_tween_done()
 		return
 	_wall_stick_aligning = true
-	var tween := create_tween()
-	tween.tween_property(self, "global_position:y", target_y, abs(target_y - global_position.y) / WALL_SLIDE_SPEED)
-	tween.tween_callback(
-		func() -> void:
-			_wall_stick_aligning = false
-			if not test_move(global_transform, Vector2(_wall_stick_dir * 1.0, 0.0)):
-				_is_wall_stuck = false
-	)
+	_wall_tween = create_tween()
+	_wall_tween.tween_property(self, "global_position:y", target_y, abs(target_y - global_position.y) / WALL_SLIDE_SPEED)
+	_wall_tween.tween_callback(_on_wall_tween_done)
+
+
+func _on_wall_tween_done() -> void:
+	_wall_stick_aligning = false
+	_wall_tween = null
+
+	if not _is_wall_stuck:
+		return
+	if not test_move(global_transform, Vector2(_wall_stick_dir * 1.0, 0.0)):
+		_release_wall_stick()
+		return
+	if not has_wallclimb:
+		_slide_down_wall()
+
+
+func _release_wall_stick() -> void:
+	_is_wall_stuck = false
+	_wall_stick_aligning = false
+	if _wall_tween:
+		_wall_tween.kill()
+		_wall_tween = null
 
 # Wall climb handling
 
@@ -87,14 +118,14 @@ func _handle_wall_stick() -> void:
 	velocity = Vector2.ZERO
 
 	if test_move(global_transform, Vector2.DOWN):
-		_is_wall_stuck = false
+		_release_wall_stick()
 		return
 
 	var horiz := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
 	if horiz == _wall_stick_dir:
-		_is_wall_stuck = false
+		_release_wall_stick()
 	elif horiz == -_wall_stick_dir:
-		_is_wall_stuck = false
+		_release_wall_stick()
 		_start_dash(horiz)
 
 	if _wall_stick_aligning:
@@ -135,13 +166,12 @@ func _roll_wall(vert_dir: int, target: Vector2) -> bool:
 
 
 func _can_wall_roll(target: Vector2) -> bool:
-	if _is_rolling or _wall_stick_aligning:
-		return false
 	var delta := target - global_position
-	if test_move(global_transform.translated(delta), Vector2.ZERO):
+	if _is_rolling or _wall_stick_aligning or !has_wallclimb or \
+	test_move(global_transform.translated(delta), Vector2.ZERO) or \
+	not test_move(global_transform.translated(delta), Vector2(_wall_stick_dir * 1.0, 0.0)):
 		return false
-	if not test_move(global_transform.translated(delta), Vector2(_wall_stick_dir * 1.0, 0.0)):
-		return false
+
 	return true
 
 
@@ -151,15 +181,13 @@ func _handle_gravity(delta: float) -> void:
 	else:
 		_dash_count = 0
 
-
-func _handle_jump() -> void:
-	if Input.is_action_just_pressed("ui_up") and is_on_floor() and !_is_rolling:
-		velocity.y = JUMP_VELOCITY
-
 # Basic movement handling
 
 
 func _handle_movement() -> void:
+	if Input.is_action_just_pressed("ui_up"):
+		_jump()
+
 	if is_on_floor():
 		var dir := int(Input.is_action_pressed("ui_right")) - int(Input.is_action_pressed("ui_left"))
 		if dir == 0:
@@ -169,12 +197,23 @@ func _handle_movement() -> void:
 		if not roll_success:
 			target.y -= BLOCK_SIZE
 			_roll_climb(dir, target)
-
 	else:
 		var dir := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
 		if dir == 0:
 			return
 		_start_dash(dir)
+
+
+func _jump() -> void:
+	if _can_jump():
+		velocity.y = JUMP_VELOCITY
+
+
+func _can_jump() -> bool:
+	if !is_on_floor() or _is_rolling or !has_jump:
+		return false
+
+	return true
 
 
 func _get_horizontal_roll_target(direction: int) -> Vector2:
@@ -268,7 +307,7 @@ func _start_dash(direction: int) -> void:
 
 
 func _can_dash() -> bool:
-	if _is_dashing or _dash_count >= MAX_DASH_COUNT or is_on_floor():
+	if _is_dashing or _dash_count >= MAX_DASH_COUNT or is_on_floor() or !has_dash:
 		return false
 
 	return true

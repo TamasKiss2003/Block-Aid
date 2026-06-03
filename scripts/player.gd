@@ -13,16 +13,19 @@ const ROLL_END_DELAY := 0.05
 # Dashing
 const DASH_SPEED := 500.0
 const DASH_DISTANCE := 3
-const MAX_DASH_COUNT := 1
 const WALL_SLIDE_SPEED := 40.0
 
 # Default abilities
 @export var has_jump := false
 @export var has_dash := false
 @export var has_double_jump := false
+@export var has_double_dash := false
 # Acquired abilities
 @export var has_wallclimb := false
 
+var _max_dash_count: int:
+	get:
+		return 2 if has_double_dash else 1
 var _is_rolling := false
 var _air_jump_used := false
 var _is_dashing := false
@@ -167,9 +170,10 @@ func _roll_wall(vert_dir: int, target: Vector2) -> bool:
 
 	_is_rolling = true
 	var tween := _perform_roll(start_pivot, end_pivot, roll_angle)
-	tween.tween_callback(func() -> void:
-		if not test_move(global_transform, Vector2(_wall_stick_dir, 0.0)):
-			_release_wall_stick()
+	tween.tween_callback(
+		func() -> void:
+			if not test_move(global_transform, Vector2(_wall_stick_dir, 0.0)):
+				_release_wall_stick()
 	)
 	return true
 
@@ -344,7 +348,7 @@ func _start_dash(direction: int) -> void:
 
 
 func _can_dash() -> bool:
-	if _is_dashing or _dash_count >= MAX_DASH_COUNT or is_on_floor() or !has_dash:
+	if _is_dashing or _dash_count >= _max_dash_count or is_on_floor() or not has_dash:
 		return false
 
 	return true

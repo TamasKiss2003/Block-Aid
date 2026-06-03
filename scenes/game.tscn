@@ -35,6 +35,7 @@ position = Vector2(-176, 16)
 has_jump = true
 has_dash = true
 has_double_jump = true
+has_double_dash = true
 has_wallclimb = true
 
 [node name="Walls" type="TileMapLayer" parent="." unique_id=1365014839]

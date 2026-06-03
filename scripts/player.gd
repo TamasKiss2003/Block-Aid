@@ -19,10 +19,12 @@ const WALL_SLIDE_SPEED := 40.0
 # Default abilities
 @export var has_jump := false
 @export var has_dash := false
+@export var has_double_jump := false
 # Acquired abilities
 @export var has_wallclimb := false
 
 var _is_rolling := false
+var _air_jump_used := false
 var _is_dashing := false
 var _dash_target_x := 0.0
 var _dash_count := 0
@@ -201,6 +203,7 @@ func _handle_gravity(delta: float) -> void:
 		velocity += get_gravity() * delta
 	else:
 		_dash_count = 0
+		_air_jump_used = false
 
 # Basic movement handling
 
@@ -226,15 +229,20 @@ func _handle_movement() -> void:
 
 
 func _jump() -> void:
-	if _can_jump():
-		velocity.y = JUMP_VELOCITY
+	if !_can_jump():
+		return
+
+	if not is_on_floor():
+		_air_jump_used = true
+	velocity.y = JUMP_VELOCITY
 
 
 func _can_jump() -> bool:
-	if !is_on_floor() or _is_rolling or !has_jump:
+	if _is_rolling or not has_jump:
 		return false
-
-	return true
+	if is_on_floor():
+		return true
+	return has_double_jump and not _air_jump_used
 
 
 func _get_horizontal_roll_target(direction: int) -> Vector2:

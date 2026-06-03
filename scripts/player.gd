@@ -18,10 +18,11 @@ const WALL_SLIDE_SPEED := 40.0
 # Default abilities
 @export var has_jump := false
 @export var has_dash := false
-@export var has_double_jump := false
-@export var has_double_dash := false
 # Acquired abilities
 @export var has_wallclimb := false
+@export var has_ceiling_crawl := false
+@export var has_double_jump := false
+@export var has_double_dash := false
 
 var _max_dash_count: int:
 	get:
@@ -32,6 +33,7 @@ var _is_dashing := false
 var _dash_target_x := 0.0
 var _dash_count := 0
 var _is_wall_stuck := false
+var _is_ceiling_stuck := false
 var _wall_stick_dir := 0
 var _wall_stick_aligning := false
 var _wall_tween: Tween = null
@@ -45,8 +47,8 @@ func _physics_process(delta: float) -> void:
 	if _is_dashing:
 		_handle_dash()
 		return
-	if _is_wall_stuck:
-		_handle_wall_stick()
+	if _is_wall_stuck or _is_ceiling_stuck:
+		_handle_stick()
 		return
 
 	_handle_gravity(delta)
@@ -103,50 +105,82 @@ func _on_wall_tween_done() -> void:
 	if not _is_wall_stuck:
 		return
 	if not test_move(global_transform, Vector2(_wall_stick_dir * 1.0, 0.0)):
-		_release_wall_stick()
+		_release_stick()
 		return
 	if not has_wallclimb:
 		_slide_down_wall()
 
-
-func _release_wall_stick() -> void:
-	_is_wall_stuck = false
-	_wall_stick_aligning = false
-	if _wall_tween:
-		_wall_tween.kill()
-		_wall_tween = null
-
 # Wall climb handling
 
 
-func _handle_wall_stick() -> void:
+func _handle_stick() -> void:
 	velocity = Vector2.ZERO
-
-	if test_move(global_transform, Vector2.DOWN):
-		_release_wall_stick()
-		return
-
-	var horiz := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
-	if horiz == _wall_stick_dir:
-		_release_wall_stick()
-	elif horiz == -_wall_stick_dir:
-		_release_wall_stick()
-		_start_dash(horiz)
-
-	if _wall_stick_aligning:
-		return
 
 	if _is_rolling:
 		return
 
+	if test_move(global_transform, Vector2.DOWN * BLOCK_SIZE / 2):
+		_release_stick()
+		return
+
+	var horiz_dir := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
 	var vert_dir := int(Input.is_action_just_pressed("ui_down")) - int(Input.is_action_just_pressed("ui_up"))
+
+	if _is_ceiling_stuck and _is_wall_stuck:
+		_handle_corner_input(horiz_dir, vert_dir)
+	elif _is_wall_stuck:
+		_handle_wall_input(horiz_dir, vert_dir)
+	elif _is_ceiling_stuck:
+		_handle_ceiling_input(horiz_dir, vert_dir)
+
+
+func _handle_corner_input(horiz_dir: int, vert_dir: int) -> void:
+	if horiz_dir == _wall_stick_dir:
+		_release_stick()
+		return
+
+	if vert_dir != 0:
+		var roll_success := _roll_wall(vert_dir, _get_vertical_roll_target(vert_dir))
+		if roll_success:
+			_is_ceiling_stuck = false
+		return
+
+	if horiz_dir != 0:
+		var roll_success := _roll_ceiling(horiz_dir, _get_horizontal_roll_target(horiz_dir))
+		if roll_success:
+			_is_wall_stuck = false
+
+
+func _handle_wall_input(horiz_dir: int, vert_dir: int) -> void:
+	if horiz_dir == -_wall_stick_dir:
+		_release_stick()
+		_start_dash(horiz_dir)
+
+	if _wall_stick_aligning:
+		return
+
 	if vert_dir != 0:
 		var target := _get_vertical_roll_target(vert_dir)
-		var roll_success := _roll_wall(vert_dir, target)
-		if not roll_success:
+		if not _roll_wall(vert_dir, target):
 			target.x += _wall_stick_dir * BLOCK_SIZE
 			_roll_climb(_wall_stick_dir, target)
-		return
+
+
+func _handle_ceiling_input(horiz_dir: int, vert_dir: int) -> void:
+	if vert_dir:
+		_release_stick()
+
+	if horiz_dir != 0:
+		_roll_ceiling(horiz_dir, _get_horizontal_roll_target(horiz_dir))
+
+
+func _release_stick(horizontal := true, vertical := true) -> void:
+	_is_wall_stuck = !horizontal
+	_is_ceiling_stuck = !vertical
+	_wall_stick_aligning = false
+	if _wall_tween:
+		_wall_tween.kill()
+		_wall_tween = null
 
 
 func _get_vertical_roll_target(direction: int) -> Vector2:
@@ -172,17 +206,58 @@ func _roll_wall(vert_dir: int, target: Vector2) -> bool:
 	var tween := _perform_roll(start_pivot, end_pivot, roll_angle)
 	tween.tween_callback(
 		func() -> void:
-			if not test_move(global_transform, Vector2(_wall_stick_dir, 0.0)):
-				_release_wall_stick()
+			var is_still_stuck := test_move(global_transform, Vector2(float(_wall_stick_dir) * BLOCK_SIZE / 2, 0.0))
+			if not is_still_stuck:
+				_release_stick()
+				return
+
+			var has_reached_ceiling := test_move(global_transform, Vector2.UP * BLOCK_SIZE / 2)
+			if has_reached_ceiling:
+				_is_ceiling_stuck = true
 	)
 	return true
 
 
 func _can_wall_roll(target: Vector2) -> bool:
 	var delta := target - global_position
-	if _is_rolling or _wall_stick_aligning or !has_wallclimb or \
+	if _is_rolling or _wall_stick_aligning or !has_wallclimb or !_is_wall_stuck or \
 	test_move(global_transform.translated(delta), Vector2.ZERO) or \
 	(not test_move(global_transform.translated(delta), Vector2(_wall_stick_dir * 1.0, 0.0)) and delta.y < 0):
+		return false
+
+	return true
+
+
+func _roll_ceiling(direction: int, target: Vector2) -> bool:
+	if !_can_ceiling_roll(target):
+		return false
+
+	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, -BLOCK_SIZE / 2.0)
+	var end_pivot = Vector2(target.x - direction * BLOCK_SIZE / 2.0, target.y - BLOCK_SIZE / 2.0)
+	var roll_angle = direction * -PI / 2.0
+
+	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
+		return false
+
+	_is_rolling = true
+	var tween := _perform_roll(start_pivot, end_pivot, roll_angle)
+	tween.tween_callback(
+		func() -> void:
+			var is_still_stuck := test_move(global_transform, Vector2.UP * BLOCK_SIZE / 2)
+			if not is_still_stuck:
+				_release_stick()
+				return
+			var has_reached_wall := test_move(global_transform, Vector2.RIGHT * direction * BLOCK_SIZE / 2)
+			if has_reached_wall:
+				_is_wall_stuck = true
+	)
+	return true
+
+
+func _can_ceiling_roll(target: Vector2):
+	var delta_to_target := target - global_position
+	if _is_rolling or !has_ceiling_crawl or !_is_ceiling_stuck or \
+	test_move(global_transform.translated(delta_to_target), Vector2.ZERO):
 		return false
 
 	return true
@@ -213,6 +288,9 @@ func _handle_gravity(delta: float) -> void:
 
 
 func _handle_movement() -> void:
+	if is_on_ceiling() and _air_jump_used:
+		_stick_from_jump()
+
 	if Input.is_action_just_pressed("ui_up"):
 		_jump()
 
@@ -231,6 +309,13 @@ func _handle_movement() -> void:
 			return
 		_start_dash(dir)
 
+func _stick_from_jump():
+	_is_ceiling_stuck = true
+	_air_jump_used = false
+	var potential_wall_stick_dir := int(test_move(global_transform, Vector2.RIGHT * BLOCK_SIZE / 2)) - int(test_move(global_transform, Vector2.LEFT * BLOCK_SIZE / 2))
+	if(potential_wall_stick_dir != 0):
+		_is_wall_stuck = true
+		_wall_stick_dir = potential_wall_stick_dir
 
 func _jump() -> void:
 	if !_can_jump():

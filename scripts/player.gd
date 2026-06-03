@@ -1,6 +1,7 @@
 extends CharacterBody2D
 
 const BLOCK_SIZE := 32
+const HALF_BLOCK := BLOCK_SIZE / 2.0
 const JUMP_VELOCITY := -450.0
 
 # Rolling
@@ -66,21 +67,23 @@ func _handle_dash() -> void:
 		global_position.x = _dash_target_x
 		velocity = Vector2.ZERO
 		_is_dashing = false
-	elif is_on_wall():
-		var target_x_delta := _dash_target_x - global_position.x
-		var dash_dir := 0 if abs(target_x_delta) < 1 else int(sign(target_x_delta))
-		var floor_near := test_move(global_transform, Vector2(0.0, BLOCK_SIZE + ROLL_SNAP_THRESHOLD))
-		velocity = Vector2.ZERO
-		_is_dashing = false
-		if not floor_near and dash_dir != 0:
-			_is_wall_stuck = true
-			_wall_stick_dir = dash_dir
-			_dash_count = 0
-			_align_to_wall_grid()
+		return
+	if not is_on_wall():
+		return
+	var target_x_delta := _dash_target_x - global_position.x
+	var dash_dir := 0 if abs(target_x_delta) < 1 else int(sign(target_x_delta))
+	var floor_near := test_move(global_transform, Vector2(0.0, BLOCK_SIZE + ROLL_SNAP_THRESHOLD))
+	velocity = Vector2.ZERO
+	_is_dashing = false
+	if not floor_near and dash_dir != 0:
+		_is_wall_stuck = true
+		_wall_stick_dir = dash_dir
+		_dash_count = 0
+		_align_to_wall_grid()
 
 
 func _align_to_wall_grid() -> void:
-	var target_y: float = ceil((global_position.y - BLOCK_SIZE / 2.0) / BLOCK_SIZE) * BLOCK_SIZE + BLOCK_SIZE / 2.0
+	var target_y: float = ceil((global_position.y - HALF_BLOCK) / BLOCK_SIZE) * BLOCK_SIZE + HALF_BLOCK
 	_tween_wall_y(target_y)
 
 
@@ -119,7 +122,7 @@ func _handle_stick() -> void:
 	if _is_rolling:
 		return
 
-	if test_move(global_transform, Vector2.DOWN * BLOCK_SIZE / 2):
+	if test_move(global_transform, Vector2.DOWN * HALF_BLOCK):
 		_release_stick()
 		return
 
@@ -136,54 +139,49 @@ func _handle_stick() -> void:
 
 func _handle_corner_input(horiz_dir: int, vert_dir: int) -> void:
 	if vert_dir != 0:
-		var is_reverse_stepup = !test_move(global_transform.translated(Vector2(BLOCK_SIZE * _wall_stick_dir, BLOCK_SIZE)), Vector2.ZERO)
-		var target := _get_vertical_roll_target(vert_dir)
-		if !is_reverse_stepup:
-			var roll_success := _roll_wall(vert_dir, target)
-			if roll_success:
-				_is_ceiling_stuck = false
-		else:
+		var target := _get_roll_target(vert_dir, false)
+		if _is_reverse_stepup(_wall_stick_dir):
 			_roll_reverse_stepup(_wall_stick_dir, Vector2(target.x + _wall_stick_dir * BLOCK_SIZE, target.y - BLOCK_SIZE))
+			return
+		if _roll_wall(vert_dir, target):
+			_is_ceiling_stuck = false
 		return
 
-
 	if horiz_dir != 0:
-		var is_reverse_stepup = !test_move(global_transform.translated(Vector2(BLOCK_SIZE * horiz_dir, BLOCK_SIZE)), Vector2.ZERO)
-		if horiz_dir == _wall_stick_dir and !is_reverse_stepup:
+		if horiz_dir == _wall_stick_dir and not _is_reverse_stepup(horiz_dir):
 			_release_stick()
 			return
-		var roll_target = _get_horizontal_roll_target(horiz_dir)
-		var has_landing_block = test_move(global_transform.translated(Vector2(BLOCK_SIZE * horiz_dir, -BLOCK_SIZE)), Vector2.ZERO)
-		if !has_landing_block and horiz_dir != _wall_stick_dir:
+		var roll_target := _get_roll_target(horiz_dir, true)
+		var has_landing_block := test_move(global_transform.translated(Vector2(BLOCK_SIZE * horiz_dir, -BLOCK_SIZE)), Vector2.ZERO)
+		if not has_landing_block and horiz_dir != _wall_stick_dir:
 			_roll_reverse_stepdown(horiz_dir, roll_target + Vector2.UP * BLOCK_SIZE)
 			return
 		var roll_success := _roll_ceiling(horiz_dir, roll_target)
 		if roll_success:
 			_is_wall_stuck = false
-		elif is_reverse_stepup:
+		elif _is_reverse_stepup(horiz_dir):
 			_roll_reverse_stepup(horiz_dir, roll_target)
-
 
 
 func _handle_wall_input(horiz_dir: int, vert_dir: int) -> void:
 	if horiz_dir == -_wall_stick_dir:
 		_release_stick()
 		_start_dash(horiz_dir)
+	elif horiz_dir == _wall_stick_dir:
+		_release_stick()
+		return
 
 	if _wall_stick_aligning:
 		return
 
 	if vert_dir != 0:
-		var target := _get_vertical_roll_target(vert_dir)
-		var is_reverse_stepup = !test_move(global_transform.translated(Vector2(BLOCK_SIZE * _wall_stick_dir, BLOCK_SIZE)), Vector2.ZERO) and vert_dir > 0
-		if !is_reverse_stepup:
-			var roll_success = _roll_wall(vert_dir, target)
-			if not roll_success:
-				target.x += _wall_stick_dir * BLOCK_SIZE
-				roll_success = _roll_climb(_wall_stick_dir, target)
-		else:
+		var target := _get_roll_target(vert_dir, false)
+		if _is_reverse_stepup(_wall_stick_dir) and vert_dir > 0:
 			_roll_reverse_stepup(_wall_stick_dir, Vector2(target.x + _wall_stick_dir * BLOCK_SIZE, target.y - BLOCK_SIZE))
-
+			return
+		if not _roll_wall(vert_dir, target):
+			target.x += _wall_stick_dir * BLOCK_SIZE
+			_roll_climb(_wall_stick_dir, target)
 
 
 func _handle_ceiling_input(horiz_dir: int, vert_dir: int) -> void:
@@ -191,152 +189,140 @@ func _handle_ceiling_input(horiz_dir: int, vert_dir: int) -> void:
 		_release_stick()
 
 	if horiz_dir != 0:
-		var roll_target = _get_horizontal_roll_target(horiz_dir)
-		var has_landing_block = test_move(global_transform.translated(Vector2(BLOCK_SIZE * horiz_dir, -BLOCK_SIZE)), Vector2.ZERO)
-		if !has_landing_block:
+		var roll_target := _get_roll_target(horiz_dir, true)
+		var has_landing_block := test_move(global_transform.translated(Vector2(BLOCK_SIZE * horiz_dir, -BLOCK_SIZE)), Vector2.ZERO)
+		if not has_landing_block:
 			_roll_reverse_stepdown(horiz_dir, roll_target + Vector2.UP * BLOCK_SIZE)
 			return
 		_roll_ceiling(horiz_dir, roll_target)
 
 
 func _release_stick(horizontal := true, vertical := true) -> void:
-	_is_wall_stuck = !horizontal
-	_is_ceiling_stuck = !vertical
+	_is_wall_stuck = not horizontal
+	_is_ceiling_stuck = not vertical
 	_wall_stick_aligning = false
 	if _wall_tween:
 		_wall_tween.kill()
 		_wall_tween = null
 
 
-func _get_vertical_roll_target(direction: int) -> Vector2:
-	var top_edge = global_position.y - BLOCK_SIZE / 2.0
-	var next_top = (floor(top_edge * direction / BLOCK_SIZE) + 1) * BLOCK_SIZE * direction
-	if direction * (next_top - top_edge) < ROLL_SNAP_THRESHOLD:
-		next_top += direction * BLOCK_SIZE
-	return Vector2(global_position.x, next_top + BLOCK_SIZE / 2.0)
+func _get_roll_target(direction: int, horizontal: bool) -> Vector2:
+	var pos := global_position.x if horizontal else global_position.y
+	var edge := pos - HALF_BLOCK
+	var next: float = (floor(edge * direction / BLOCK_SIZE) + 1) * BLOCK_SIZE * direction
+	if direction * (next - edge) < ROLL_SNAP_THRESHOLD:
+		next += direction * BLOCK_SIZE
+	return Vector2(next + HALF_BLOCK, global_position.y) if horizontal \
+	else Vector2(global_position.x, next + HALF_BLOCK)
+
+
+func _is_reverse_stepup(dir: int) -> bool:
+	return not test_move(global_transform.translated(Vector2(BLOCK_SIZE * dir, BLOCK_SIZE)), Vector2.ZERO)
+
+
+func _attempt_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float, on_done: Callable) -> bool:
+	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
+		return false
+	_is_rolling = true
+	_perform_roll(start_pivot, end_pivot, roll_angle).tween_callback(on_done)
+	return true
 
 
 func _roll_wall(vert_dir: int, target: Vector2) -> bool:
 	if not _can_wall_roll(target):
 		return false
 
-	var start_pivot = global_position + Vector2(_wall_stick_dir * BLOCK_SIZE / 2.0, vert_dir * BLOCK_SIZE / 2.0)
-	var end_pivot = Vector2(target.x + _wall_stick_dir * BLOCK_SIZE / 2.0, target.y - vert_dir * BLOCK_SIZE / 2.0)
-	var roll_angle := _wall_stick_dir * vert_dir * (-PI / 2.0)
-
-	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
-		return false
-
-	_is_rolling = true
-	var tween := _perform_roll(start_pivot, end_pivot, roll_angle)
-	tween.tween_callback(
+	var start_pivot := global_position + Vector2(_wall_stick_dir * HALF_BLOCK, vert_dir * HALF_BLOCK)
+	var end_pivot := Vector2(target.x + _wall_stick_dir * HALF_BLOCK, target.y - vert_dir * HALF_BLOCK)
+	return _attempt_roll(
+		start_pivot,
+		end_pivot,
+		_wall_stick_dir * vert_dir * (-PI / 2.0),
 		func() -> void:
-			var is_still_stuck := test_move(global_transform, Vector2(float(_wall_stick_dir) * BLOCK_SIZE / 2, 0.0))
-			if not is_still_stuck:
+			if not test_move(global_transform, Vector2(float(_wall_stick_dir) * HALF_BLOCK, 0.0)):
 				_release_stick()
 				return
-
-			var has_reached_ceiling := test_move(global_transform, Vector2.UP * BLOCK_SIZE / 2)
-			if has_reached_ceiling:
+			if test_move(global_transform, Vector2.UP * HALF_BLOCK):
 				_is_ceiling_stuck = true
 	)
-	return true
+
+
+func _can_stick_roll(target: Vector2, ability: bool, is_stuck: bool) -> bool:
+	return not _is_rolling and ability and is_stuck \
+	and not test_move(global_transform.translated(target - global_position), Vector2.ZERO)
 
 
 func _can_wall_roll(target: Vector2) -> bool:
-	var delta := target - global_position
-	if _is_rolling or _wall_stick_aligning or !has_wallclimb or !_is_wall_stuck or \
-	test_move(global_transform.translated(delta), Vector2.ZERO) or \
-	(not test_move(global_transform.translated(delta), Vector2(_wall_stick_dir * 1.0, 0.0)) and delta.y < 0):
+	if not _can_stick_roll(target, has_wallclimb, _is_wall_stuck):
 		return false
-
-	return true
+	var delta := target - global_position
+	return test_move(global_transform.translated(delta), Vector2(_wall_stick_dir * 1.0, 0.0)) or delta.y >= 0
 
 
 func _roll_ceiling(direction: int, target: Vector2) -> bool:
-	if !_can_ceiling_roll(target):
+	if not _can_ceiling_roll(target):
 		return false
 
-	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, -BLOCK_SIZE / 2.0)
-	var end_pivot = Vector2(target.x - direction * BLOCK_SIZE / 2.0, target.y - BLOCK_SIZE / 2.0)
-	var roll_angle = direction * -PI / 2.0
-
-	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
-		return false
-
-	_is_rolling = true
-	var tween := _perform_roll(start_pivot, end_pivot, roll_angle)
-	tween.tween_callback(
+	var start_pivot := global_position + Vector2(direction * HALF_BLOCK, -HALF_BLOCK)
+	var end_pivot := Vector2(target.x - direction * HALF_BLOCK, target.y - HALF_BLOCK)
+	return _attempt_roll(
+		start_pivot,
+		end_pivot,
+		direction * -PI / 2.0,
 		func() -> void:
-			var is_still_stuck := test_move(global_transform, Vector2.UP * BLOCK_SIZE / 2)
-			if not is_still_stuck:
+			if not test_move(global_transform, Vector2.UP * HALF_BLOCK):
 				_release_stick()
 				return
-			var has_reached_wall := test_move(global_transform, Vector2.RIGHT * direction * BLOCK_SIZE / 2)
-			if has_reached_wall:
+			if test_move(global_transform, Vector2.RIGHT * direction * HALF_BLOCK):
 				_is_wall_stuck = true
 	)
-	return true
 
 
 func _roll_reverse_stepdown(direction: int, target: Vector2) -> bool:
-	if !_can_ceiling_roll(target):
+	if not _can_ceiling_roll(target):
 		return false
 
-	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, -BLOCK_SIZE / 2.0)
-	var end_pivot = Vector2(target.x - direction * BLOCK_SIZE / 2.0, target.y + BLOCK_SIZE / 2.0)
-	var roll_angle = direction * -PI
-
-	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
-		return false
-
-	_is_rolling = true
-	var tween := _perform_roll(start_pivot, end_pivot, roll_angle)
-	tween.tween_callback(
+	var start_pivot := global_position + Vector2(direction * HALF_BLOCK, -HALF_BLOCK)
+	var end_pivot := Vector2(target.x - direction * HALF_BLOCK, target.y + HALF_BLOCK)
+	return _attempt_roll(
+		start_pivot,
+		end_pivot,
+		direction * -PI,
 		func() -> void:
-			var is_still_stuck := test_move(global_transform, Vector2.UP * BLOCK_SIZE / 2)
-			if not is_still_stuck:
+			if not test_move(global_transform, Vector2.UP * HALF_BLOCK):
 				_is_ceiling_stuck = false
+				if !has_wallclimb:
+					_release_stick()
+					return
+
 			_is_wall_stuck = true
 			_wall_stick_dir = -direction
 	)
-	return true
 
-func _can_ceiling_roll(target: Vector2):
-	var delta_to_target := target - global_position
-	if _is_rolling or !has_ceiling_crawl or !_is_ceiling_stuck or \
-	test_move(global_transform.translated(delta_to_target), Vector2.ZERO):
-		return false
 
-	return true
+func _can_ceiling_roll(target: Vector2) -> bool:
+	return _can_stick_roll(target, has_ceiling_crawl, _is_ceiling_stuck)
+
 
 func _roll_reverse_stepup(direction: int, target: Vector2) -> bool:
-	if !_can_reverse_stepup():
+	if not _can_reverse_stepup():
 		return false
 
-	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, BLOCK_SIZE / 2.0)
-	var end_pivot = Vector2(target.x - direction * BLOCK_SIZE / 2.0, target.y + BLOCK_SIZE / 2.0)
-	var roll_angle = direction * -PI
-
-	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
-		return false
-
-	_is_rolling = true
-	var tween := _perform_roll(start_pivot, end_pivot, roll_angle)
-	tween.tween_callback(
+	var start_pivot := global_position + Vector2(direction * HALF_BLOCK, HALF_BLOCK)
+	var end_pivot := Vector2(target.x - direction * HALF_BLOCK, target.y + HALF_BLOCK)
+	return _attempt_roll(
+		start_pivot,
+		end_pivot,
+		direction * -PI,
 		func() -> void:
-			var is_still_stuck := test_move(global_transform, Vector2.RIGHT * direction * BLOCK_SIZE / 2)
-			if not is_still_stuck:
+			if not test_move(global_transform, Vector2.RIGHT * direction * HALF_BLOCK):
 				_is_wall_stuck = false
 			_is_ceiling_stuck = true
 	)
-	return true
 
-func _can_reverse_stepup():
-	if _is_rolling or !has_ceiling_crawl or (!_is_ceiling_stuck and !_is_wall_stuck):
-		return false
 
-	return true
+func _can_reverse_stepup() -> bool:
+	return not _is_rolling and has_ceiling_crawl and (_is_ceiling_stuck or _is_wall_stuck)
 
 
 func _is_roll_arc_clear(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) -> bool:
@@ -374,7 +360,7 @@ func _handle_movement() -> void:
 		var dir := int(Input.is_action_pressed("ui_right")) - int(Input.is_action_pressed("ui_left"))
 		if dir == 0:
 			return
-		var target := _get_horizontal_roll_target(dir)
+		var target := _get_roll_target(dir, true)
 		var roll_success := _roll_sideways(dir, target)
 		if not roll_success:
 			target.y -= BLOCK_SIZE
@@ -386,17 +372,19 @@ func _handle_movement() -> void:
 		_start_dash(dir)
 
 
-func _stick_from_jump():
+func _stick_from_jump() -> void:
+	if !has_ceiling_crawl:
+		return
 	_is_ceiling_stuck = true
 	_air_jump_used = false
-	var potential_wall_stick_dir := int(test_move(global_transform, Vector2.RIGHT * BLOCK_SIZE / 2)) - int(test_move(global_transform, Vector2.LEFT * BLOCK_SIZE / 2))
-	if (potential_wall_stick_dir != 0):
+	var potential_wall_stick_dir := int(test_move(global_transform, Vector2.RIGHT * HALF_BLOCK)) - int(test_move(global_transform, Vector2.LEFT * HALF_BLOCK))
+	if potential_wall_stick_dir != 0:
 		_is_wall_stuck = true
 		_wall_stick_dir = potential_wall_stick_dir
 
 
 func _jump() -> void:
-	if !_can_jump():
+	if not _can_jump():
 		return
 
 	if not is_on_floor():
@@ -412,74 +400,45 @@ func _can_jump() -> bool:
 	return has_double_jump and not _air_jump_used
 
 
-func _get_horizontal_roll_target(direction: int) -> Vector2:
-	var left_edge = global_position.x - BLOCK_SIZE / 2.0
-	var next_left = (floor(left_edge * direction / BLOCK_SIZE) + 1) * BLOCK_SIZE * direction
-	if direction * (next_left - left_edge) < ROLL_SNAP_THRESHOLD:
-		next_left += direction * BLOCK_SIZE
-	return Vector2(next_left + BLOCK_SIZE / 2.0, global_position.y)
-
-
-# No exceptions or try catch in gdscript so returning a boolean show the roll worked
+# No exceptions or try catch in gdscript so returning a boolean shows the roll worked
 func _roll_sideways(direction: int, target: Vector2) -> bool:
-	if !_can_roll_sideways(target):
+	if not _can_roll_sideways(target):
 		return false
 
-	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, BLOCK_SIZE / 2.0)
-	var end_pivot = Vector2(target.x - direction * BLOCK_SIZE / 2.0, target.y + BLOCK_SIZE / 2.0)
-	var roll_angle = direction * PI / 2.0
-
-	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
-		return false
-
-	_is_rolling = true
-	_perform_roll(start_pivot, end_pivot, roll_angle)
-	return true
+	var start_pivot := global_position + Vector2(direction * HALF_BLOCK, HALF_BLOCK)
+	var end_pivot := Vector2(target.x - direction * HALF_BLOCK, target.y + HALF_BLOCK)
+	return _attempt_roll(start_pivot, end_pivot, direction * PI / 2.0, func() -> void: pass)
 
 
 func _can_roll_sideways(target: Vector2) -> bool:
-	var delta_to_target := target - global_position
-	if _is_rolling or not is_on_floor() or test_move(global_transform.translated(delta_to_target), Vector2.ZERO):
-		return false
-
-	return true
+	return not _is_rolling and is_on_floor() \
+	and not test_move(global_transform.translated(target - global_position), Vector2.ZERO)
 
 
 func _roll_climb(direction: int, target: Vector2) -> bool:
-	if !_can_roll_climb(target, direction):
+	if not _can_roll_climb(target, direction):
 		return false
 
-	var start_pivot = global_position + Vector2(direction * BLOCK_SIZE / 2.0, -BLOCK_SIZE / 2.0)
-	var end_pivot = Vector2(target.x - direction * BLOCK_SIZE / 2.0, target.y + BLOCK_SIZE / 2.0)
-	var roll_angle = direction * PI
-
-	if not _is_roll_arc_clear(start_pivot, end_pivot, roll_angle):
-		return false
-
-	_is_rolling = true
-	_perform_roll(start_pivot, end_pivot, roll_angle)
-	return true
+	var start_pivot := global_position + Vector2(direction * HALF_BLOCK, -HALF_BLOCK)
+	var end_pivot := Vector2(target.x - direction * HALF_BLOCK, target.y + HALF_BLOCK)
+	return _attempt_roll(start_pivot, end_pivot, direction * PI, func() -> void: pass)
 
 
 func _can_roll_climb(target: Vector2, direction: int) -> bool:
-	var delta_to_target := target - global_position
-	if _is_rolling or \
-	test_move(global_transform.translated(delta_to_target), Vector2.ZERO) or \
-	!test_move(global_transform.translated(direction * Vector2.RIGHT * BLOCK_SIZE), Vector2.ZERO):
-		return false
-
-	return true
+	return not _is_rolling \
+	and not test_move(global_transform.translated(target - global_position), Vector2.ZERO) \
+	and test_move(global_transform.translated(direction * Vector2.RIGHT * BLOCK_SIZE), Vector2.ZERO)
 
 
 func _perform_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) -> Tween:
-	var start_pos = global_position
-	var start_rot = rotation
+	var start_pos := global_position
+	var start_rot := rotation
 
-	var tween = create_tween()
+	var tween := create_tween()
 	tween.tween_method(
 		func(t: float) -> void:
-			var pivot = start_pivot.lerp(end_pivot, t)
-			var angle = roll_angle * t
+			var pivot := start_pivot.lerp(end_pivot, t)
+			var angle := roll_angle * t
 			global_position = pivot + (start_pos - start_pivot).rotated(angle)
 			rotation = start_rot + angle,
 		0.0,
@@ -488,8 +447,8 @@ func _perform_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) 
 	)
 	tween.tween_callback(
 		func() -> void:
-			global_position.x = snapped(global_position.x - BLOCK_SIZE / 2.0, float(BLOCK_SIZE)) + BLOCK_SIZE / 2.0
-			global_position.y = snapped(global_position.y - BLOCK_SIZE / 2.0, float(BLOCK_SIZE)) + BLOCK_SIZE / 2.0
+			global_position.x = snapped(global_position.x - HALF_BLOCK, float(BLOCK_SIZE)) + HALF_BLOCK
+			global_position.y = snapped(global_position.y - HALF_BLOCK, float(BLOCK_SIZE)) + HALF_BLOCK
 			rotation = snapped(rotation, PI / 2.0)
 	)
 	tween.tween_interval(ROLL_END_DELAY)
@@ -501,7 +460,7 @@ func _perform_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) 
 
 
 func _start_dash(direction: int) -> void:
-	if !_can_dash():
+	if not _can_dash():
 		return
 
 	_is_dashing = true
@@ -511,18 +470,15 @@ func _start_dash(direction: int) -> void:
 
 
 func _can_dash() -> bool:
-	if _is_dashing or _dash_count >= _max_dash_count or is_on_floor() or not has_dash:
-		return false
-
-	return true
+	return not _is_dashing and _dash_count < _max_dash_count and not is_on_floor() and has_dash
 
 
 func _get_dash_target_x(direction: int) -> float:
-	var edge = global_position.x - direction * BLOCK_SIZE / 2.0
-	var base = floor(edge * direction / BLOCK_SIZE) * BLOCK_SIZE * direction
-	var offset = direction * (edge - base)
-	var blocks = DASH_DISTANCE if offset < BLOCK_SIZE / 2.0 else DASH_DISTANCE + 1
-	return base + direction * (blocks * BLOCK_SIZE + BLOCK_SIZE / 2.0)
+	var edge := global_position.x - direction * HALF_BLOCK
+	var base: float = floor(edge * direction / BLOCK_SIZE) * BLOCK_SIZE * direction
+	var offset: float = direction * (edge - base)
+	var blocks := DASH_DISTANCE if offset < HALF_BLOCK else DASH_DISTANCE + 1
+	return base + direction * (blocks * BLOCK_SIZE + HALF_BLOCK)
 
 # Event handlers
 

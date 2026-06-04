@@ -33,14 +33,14 @@ animation = &"idle"
 autoplay = "idle"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=181238772]
-scale = Vector2(0.995, 0.995)
+scale = Vector2(0.985, 0.985)
 shape = SubResource("RectangleShape2D_hqtel")
 
 [node name="HitBox" type="Area2D" parent="." unique_id=494498149]
 collision_mask = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="HitBox" unique_id=982816272]
-scale = Vector2(0.995, 0.995)
+scale = Vector2(0.985, 0.985)
 shape = SubResource("RectangleShape2D_g2els")
 debug_color = Color(1, 0, 0, 0.41960785)
 

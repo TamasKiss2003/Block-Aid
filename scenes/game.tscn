@@ -38,6 +38,7 @@ has_wallclimb = true
 has_ceiling_crawl = true
 has_double_jump = true
 has_double_dash = true
+has_shrink = true
 
 [node name="Walls" type="TileMapLayer" parent="." unique_id=1365014839]
 use_parent_material = true

@@ -267,6 +267,7 @@ func _handle_dash() -> void:
 		_is_dashing = false
 		return
 	if not is_on_wall():
+		_air_jump_used = false
 		return
 	var target_x_delta := _dash_target_x - global_position.x
 	var dash_dir := 0 if abs(target_x_delta) < 1 else int(sign(target_x_delta))
@@ -372,7 +373,7 @@ func _handle_wall_input(horiz_dir: int, vert_dir: int) -> void:
 			var target := _get_roll_target(horiz_dir, true)
 			_roll_sideways(horiz_dir, target)
 		else:
-			_start_dash(horiz_dir)
+			_start_dash(horiz_dir, true)
 	elif horiz_dir == _wall_stick_dir:
 		_release_stick()
 		return
@@ -679,13 +680,15 @@ func _perform_roll(start_pivot: Vector2, end_pivot: Vector2, roll_angle: float) 
 # Dash target setting
 
 
-func _start_dash(direction: int) -> void:
+func _start_dash(direction: int, reduced: bool = false) -> void:
 	if not _can_dash():
 		return
 
 	_is_dashing = true
 	_dash_count += 1
 	_dash_target_x = _get_dash_target_x(direction)
+	if reduced:
+		_dash_target_x -= _block_size * direction
 	velocity = Vector2(direction * DASH_SPEED, 0.0)
 
 

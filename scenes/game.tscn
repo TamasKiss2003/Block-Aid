@@ -46,9 +46,10 @@ tile_map_data = PackedByteArray("AAD7/wEAAQAAAAAAAAD8/wEAAQAAAAAAAAD9/wEAAQAAAAA
 tile_set = SubResource("TileSet_5fb3c")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=506408532]
-position = Vector2(64, -96)
+position = Vector2(-176, 16)
 ignore_rotation = false
-zoom = Vector2(2, 2)
+zoom = Vector2(4, 4)
+position_smoothing_enabled = true
 script = ExtResource("4_lbhrr")
 target = NodePath("../Player")
 

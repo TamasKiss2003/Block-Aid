@@ -14,6 +14,24 @@ const DASH_SPEED := 500.0
 const DASH_DISTANCE := 3
 const WALL_SLIDE_SPEED := 40.0
 
+# Touch input
+const _SWIPE_THRESHOLD := 60.0
+const _TAP_THRESHOLD := 25.0
+
+# Maps semantic action names to Godot input actions (any one triggers it).
+# "right"/"left" include tap so ground rolling works with a tap.
+# "swipe_right"/"swipe_left" are swipe-only — used for dashing and wall movement.
+const INPUT_ACTIONS := {
+	"right": ["ui_right", "touch_tap_right"],
+	"left": ["ui_left", "touch_tap_left"],
+	"up": ["ui_up"],
+	"down": ["ui_down"],
+	"swipe_right": ["ui_right"],
+	"swipe_left": ["ui_left"],
+	"shrink": ["touch_shrink"],
+	"grow": ["touch_grow"],
+}
+
 # Default abilities
 @export var has_jump := false
 @export var has_dash := false
@@ -48,10 +66,97 @@ var _wall_stick_aligning := false
 var _wall_tween: Tween = null
 var _is_shrunk := false
 var _is_shrinking := false
+var _touch_starts: Dictionary[int, Vector2] = { }
+var _touch_current: Dictionary[int, Vector2] = { }
+var _pinch_start_dist := -1.0
+var _pinch_consumed := false
+
+
+func _ready() -> void:
+	var all_actions: Array[String] = []
+	for actions: Array in INPUT_ACTIONS.values():
+		all_actions.append_array(actions)
+	for action: String in all_actions:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
 
 
 func die() -> void:
 	get_tree().reload_current_scene()
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			_on_touch_down(event.index, event.position)
+		elif _touch_starts.has(event.index):
+			_on_touch_up(event.index, event.position)
+	elif event is InputEventScreenDrag:
+		_touch_current[event.index] = event.position
+
+
+func _on_touch_down(idx: int, pos: Vector2) -> void:
+	_touch_starts[idx] = pos
+	_touch_current[idx] = pos
+	if _touch_starts.size() == 2:
+		var positions := _touch_current.values()
+		_pinch_start_dist = positions[0].distance_to(positions[1])
+		_pinch_consumed = false
+
+
+func _on_touch_up(idx: int, pos: Vector2) -> void:
+	var start := _touch_starts[idx]
+	_touch_current[idx] = pos
+	var pts := _touch_current.values()
+	_touch_starts.erase(idx)
+	_touch_current.erase(idx)
+
+	if _pinch_start_dist < 0.0:
+		_process_touch_gesture(start, pos - start)
+		return
+
+	if not _pinch_consumed:
+		_process_pinch_gesture(pts[0].distance_to(pts[1]))
+		_pinch_consumed = true
+	if _touch_starts.is_empty():
+		_pinch_start_dist = -1.0
+
+
+func _process_pinch_gesture(end_dist: float) -> void:
+	var dist_change := end_dist - _pinch_start_dist
+	if abs(dist_change) < _SWIPE_THRESHOLD:
+		return
+	_fire_action("touch_shrink" if dist_change < 0 else "touch_grow")
+
+
+func _process_touch_gesture(start: Vector2, delta: Vector2) -> void:
+	var dist := delta.length()
+	if dist < _TAP_THRESHOLD:
+		var half_w := get_viewport().get_visible_rect().size.x / 2.0
+		_fire_action("touch_tap_left" if start.x < half_w else "touch_tap_right")
+		return
+	if dist < _SWIPE_THRESHOLD:
+		return
+	if abs(delta.x) >= abs(delta.y):
+		_fire_action("ui_right" if delta.x > 0 else "ui_left")
+	else:
+		_fire_action("ui_down" if delta.y > 0 else "ui_up")
+
+
+func _fire_action(action: String) -> void:
+	Input.action_press(action)
+	call_deferred("_release_action", action)
+
+
+func _release_action(action: String) -> void:
+	Input.action_release(action)
+
+
+func _is_just_pressed(action: String) -> bool:
+	for raw: String in INPUT_ACTIONS[action]:
+		if Input.is_action_just_pressed(raw):
+			return true
+	return false
 
 
 func _physics_process(delta: float) -> void:
@@ -76,11 +181,12 @@ func _physics_process(delta: float) -> void:
 
 
 func _handle_shrink() -> void:
-	if _is_shrinking or not Input.is_key_pressed(KEY_S):
+	if _is_shrinking:
 		return
-	if _is_shrunk:
+	var want_toggle := Input.is_key_pressed(KEY_S)
+	if _is_shrunk and (want_toggle or _is_just_pressed("grow")):
 		_try_grow()
-	elif _can_shrink():
+	elif not _is_shrunk and (want_toggle or _is_just_pressed("shrink")) and _can_shrink():
 		_do_shrink()
 
 
@@ -221,13 +327,14 @@ func _handle_stick() -> void:
 			_release_stick()
 			return
 
-	var horiz_dir := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
-	var vert_dir := int(Input.is_action_just_pressed("ui_down")) - int(Input.is_action_just_pressed("ui_up"))
+	var horiz_dir := int(_is_just_pressed("right")) - int(_is_just_pressed("left"))
+	var wall_horiz_dir := int(_is_just_pressed("swipe_right")) - int(_is_just_pressed("swipe_left"))
+	var vert_dir := int(_is_just_pressed("down")) - int(_is_just_pressed("up"))
 
 	if _is_ceiling_stuck and _is_wall_stuck:
 		_handle_corner_input(horiz_dir, vert_dir)
 	elif _is_wall_stuck:
-		_handle_wall_input(horiz_dir, vert_dir)
+		_handle_wall_input(wall_horiz_dir, vert_dir)
 	elif _is_ceiling_stuck:
 		_handle_ceiling_input(horiz_dir, vert_dir)
 
@@ -457,11 +564,11 @@ func _handle_movement() -> void:
 	if is_on_ceiling() and _air_jump_used:
 		_stick_from_jump()
 
-	if Input.is_action_just_pressed("ui_up"):
+	if _is_just_pressed("up"):
 		_jump()
 
 	if is_on_floor():
-		var dir := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
+		var dir := int(_is_just_pressed("right")) - int(_is_just_pressed("left"))
 		if dir == 0:
 			return
 		var target := _get_roll_target(dir, true)
@@ -472,7 +579,7 @@ func _handle_movement() -> void:
 			return
 		_try_floor_wall_stick(dir)
 	else:
-		var dir := int(Input.is_action_just_pressed("ui_right")) - int(Input.is_action_just_pressed("ui_left"))
+		var dir := int(_is_just_pressed("swipe_right")) - int(_is_just_pressed("swipe_left"))
 		if dir == 0:
 			return
 		_start_dash(dir)
